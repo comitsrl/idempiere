@@ -9,6 +9,13 @@ export ID_ENV=Server
 echo Restore idempiere Database from Export- "$IDEMPIERE_HOME" \("$ADEMPIERE_DB_NAME"\)
 
 
+ARCHIVE=$(ls -t "$IDEMPIERE_HOME"/data/ExpDat*.tar.7z 2>/dev/null | head -n 1)
+if [ -n "$ARCHIVE" ]; then
+    SEVENZIP=$(command -v 7za || command -v 7z) || { echo "7za or 7z is required"; exit 1; }
+    umask 027
+    echo Extract "$ARCHIVE"
+    "$SEVENZIP" x -so "$ARCHIVE" | tar -xOf - ExpDat.dmp > "$IDEMPIERE_HOME"/data/ExpDat.dmp || exit 1
+fi
 echo Re-Create idempiere User and import "$IDEMPIERE_HOME"/data/ExpDat.dmp
 echo "== The import will show warnings. This is OK =="
 ls -lsa "$IDEMPIERE_HOME"/data/ExpDat.dmp

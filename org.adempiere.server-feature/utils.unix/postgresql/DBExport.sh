@@ -24,9 +24,12 @@ fi
 
 PGPASSWORD=$2
 export PGPASSWORD
+umask 027
 pg_dump -h "$ADEMPIERE_DB_SERVER" -p "$ADEMPIERE_DB_PORT" --no-owner -U "$1" "$ADEMPIERE_DB_NAME" > "$IDEMPIERE_HOME"/data/ExpDat.dmp
 PGPASSWORD=
 export PGPASSWORD
 
 cd "$IDEMPIERE_HOME"/data || exit
-jar cvfM ExpDat.jar ExpDat.dmp
+SEVENZIP=$(command -v 7za || command -v 7z) || { echo "7za or 7z is required"; exit 1; }
+rm -f ExpDat.tar.7z
+tar -cf - ExpDat.dmp | "$SEVENZIP" a -si -mx=4 -mmt=2 ExpDat.tar.7z && rm -f ExpDat.dmp
