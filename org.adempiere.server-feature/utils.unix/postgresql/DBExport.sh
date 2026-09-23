@@ -1,32 +1,41 @@
-#!/bin/sh
-
-echo	iDempiere PostgreSQL Database Export
-
-# $Id: DBExport.sh,v 1.3 2005/01/22 21:59:15 jjanke Exp $
-
-echo Saving database "$1"@"$ADEMPIERE_DB_NAME" to "$IDEMPIERE_HOME"/data/ExpDat.dmp
-
-if [ $# -eq 0 ]
-  then
-    echo "Usage:		$0 <userAccount>"
-    echo "Example:	$0 adempiere adempiere"
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 027
+if (( $# < 2 )); then
+    echo "Uso: $0 <usuario_db> <password_db>" >&2
     exit 1
 fi
-if [ "$IDEMPIERE_HOME" = "" ] || [ "$ADEMPIERE_DB_NAME" = "" ] || [ "$ADEMPIERE_DB_SERVER" = "" ] || [ "$ADEMPIERE_DB_PORT" = "" ]
-  then
-    echo "Please make sure that the environment variables are set correctly:"
-    echo "	IDEMPIERE_HOME	e.g. /idempiere"
-    echo "	ADEMPIERE_DB_NAME	e.g. adempiere or xe"
-    echo "  ADEMPIERE_DB_SERVER e.g. dbserver.adempiere.org"
-    echo "  ADEMPIERE_DB_PORT e.g. 5432 or 1521"
+: "${IDEMPIERE_HOME:?IDEMPIERE_HOME no está definido}"
+: "${ADEMPIERE_DB_NAME:?}"
+: "${ADEMPIERE_DB_SERVER:?}"
+: "${ADEMPIERE_DB_PORT:?}"
+COMPRESSOR="$(command -v 7za || command -v 7z)" || { echo "Se requiere 7za o 7z" >&2; exit 1; }
+DB_USER="$1"
+DB_PASSWORD="$2"
+DATA_DIR="${IDEMPIERE_HOME}/data"
+FINAL_ARCHIVE="$DATA_DIR/ExpDat.tar.7z"
+TMP_DIR="$(mktemp -d "$DATA_DIR/.dbexport.XXXXXX")"
+DUMP_FILE="$TMP_DIR/ExpDat.dmp"
+ARCHIVE_FILE="$TMP_DIR/ExpDat.tar.7z"
+cleanup() {
+    local rc=$?
+    rm -rf -- "$TMP_DIR"
+    exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
+if [[ -e "$FINAL_ARCHIVE" ]]; then
+    echo "Ya existe un archivo pendiente: $FINAL_ARCHIVE" >&2
     exit 1
 fi
-
-PGPASSWORD=$2
-export PGPASSWORD
-pg_dump -h "$ADEMPIERE_DB_SERVER" -p "$ADEMPIERE_DB_PORT" --no-owner -U "$1" "$ADEMPIERE_DB_NAME" > "$IDEMPIERE_HOME"/data/ExpDat.dmp
-PGPASSWORD=
-export PGPASSWORD
-
-cd "$IDEMPIERE_HOME"/data || exit
-jar cvfM ExpDat.jar ExpDat.dmp
+echo "Exportando $ADEMPIERE_DB_NAME desde $ADEMPIERE_DB_SERVER"
+PGPASSWORD="$DB_PASSWORD" pg_dump -w -h "$ADEMPIERE_DB_SERVER" \
+    -p "$ADEMPIERE_DB_PORT" --no-owner -U "$DB_USER" "$ADEMPIERE_DB_NAME" > "$DUMP_FILE"
+echo "Comprimiendo ExpDat.dmp en tar.7z"
+tar -cf - -C "$TMP_DIR" ExpDat.dmp |
+    "$COMPRESSOR" a -si -mx=4 -mmt=2 "$ARCHIVE_FILE"
+mv -- "$ARCHIVE_FILE" "$FINAL_ARCHIVE"
+chmod 0640 "$FINAL_ARCHIVE"
+echo "Archivo generado: $FINAL_ARCHIVE"
